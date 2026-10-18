@@ -1,0 +1,266 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: 'Inter', system-ui, sans-serif;
+  
+  --color-primary-50: #f4f7fa;
+  --color-primary-100: #e0e9f1;
+  --color-primary-900: #101c2a;
+
+  --color-brand-50: #f1f8f5;
+  --color-brand-100: #dff0e6;
+  --color-brand-200: #bfe0ce;
+  --color-brand-500: #297045;
+  --color-brand-600: #1e5c36;
+  --color-brand-800: #1E3A2A;
+  --color-brand-900: #162B1F;
+  --color-brand-950: #0a1710;
+}
+
+@layer utilities {
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
+
+body {
+  background-color: #f3f4f6;
+  color: #111827;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+#root {
+  min-height: 100dvh;
+  width: 100%;
+  background-color: #f8fafc;
+  display: flex;
+  position: relative;
+}
+
+/* ──────────────────────────────────────────────────────────
+   DARK MODE COMPREHENSIVE STYLING
+   ────────────────────────────────────────────────────────── */
+html.dark {
+  color-scheme: dark;
+}
+
+html.dark body {
+  background-color: #0b1120;
+  color: #f1f5f9;
+}
+
+html.dark #root {
+  background-color: #0b1120;
+}
+
+/* Dark mode inputs, selects, textareas */
+html.dark input:not([type="checkbox"]):not([type="radio"]),
+html.dark select,
+html.dark textarea {
+  background-color: #131c31;
+  border-color: #27354f;
+  color: #f8fafc;
+}
+
+html.dark input::placeholder,
+html.dark textarea::placeholder {
+  color: #64748b;
+}
+
+/* Dark mode generic overrides */
+html.dark .bg-white {
+  background-color: #111a2e;
+}
+
+html.dark .bg-gray-50 {
+  background-color: #0b1120;
+}
+
+html.dark .bg-gray-50\/50,
+html.dark .bg-gray-50\/60 {
+  background-color: #162038;
+}
+
+html.dark .bg-gray-100 {
+  background-color: #1a253e;
+}
+
+html.dark .bg-gray-200 {
+  background-color: #243252;
+}
+
+html.dark .border-gray-100 {
+  border-color: #1e293b;
+}
+
+html.dark .border-gray-200 {
+  border-color: #243252;
+}
+
+html.dark .border-gray-300 {
+  border-color: #334155;
+}
+
+html.dark .text-gray-900 {
+  color: #f8fafc;
+}
+
+html.dark .text-gray-800 {
+  color: #f1f5f9;
+}
+
+html.dark .text-gray-700 {
+  color: #cbd5e1;
+}
+
+html.dark .text-gray-600 {
+  color: #94a3b8;
+}
+
+html.dark .text-gray-500 {
+  color: #8393a8;
+}
+
+html.dark .text-gray-400 {
+  color: #64748b;
+}
+
+html.dark .divide-gray-100 > :not([hidden]) ~ :not([hidden]),
+html.dark .divide-gray-200 > :not([hidden]) ~ :not([hidden]) {
+  border-color: #1e293b;
+}
+
+html.dark .hover\:bg-gray-50:hover {
+  background-color: #16213a;
+}
+
+html.dark .hover\:bg-gray-100:hover {
+  background-color: #1c2a47;
+}
+
+html.dark .bg-brand-50 {
+  background-color: rgba(30, 92, 54, 0.22);
+}
+
+html.dark .border-brand-100 {
+  border-color: rgba(41, 112, 69, 0.4);
+}
+
+html.dark .border-brand-200 {
+  border-color: rgba(41, 112, 69, 0.5);
+}
+
+html.dark .text-brand-800 {
+  color: #4ade80;
+}
+
+html.dark .text-brand-900 {
+  color: #86efac;
+}
+
+/* 80mm Thermal Receipt Print Styles */
+@media print {
+  html, body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  body * {
+    visibility: hidden;
+  }
+
+  #thermal-receipt-print,
+  #thermal-receipt-print * {
+    visibility: visible;
+  }
+
+  #thermal-receipt-print {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 80mm !important;
+    max-width: 80mm !important;
+    margin: 0 !important;
+    padding: 3mm !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    font-family: 'Courier New', Courier, monospace, system-ui !important;
+    display: block !important;
+    box-shadow: none !important;
+  }
+
+  @page {
+    size: 80mm auto;
+    margin: 0;
+  }
+}
+
+/* ──────────────────────────────────────────────────────────
+   COMPACT TABLE & DENSE LIST VIEW MODE
+   ────────────────────────────────────────────────────────── */
+html.compact-mode table th,
+html.compact-mode table td {
+  padding-top: 0.35rem !important;
+  padding-bottom: 0.35rem !important;
+  padding-left: 0.5rem !important;
+  padding-right: 0.5rem !important;
+  font-size: 0.8125rem !important;
+}
+
+html.compact-mode tr {
+  min-height: 2.25rem !important;
+}
+
+/* Compact layout for grid list rows (Sales, Inventory, Customers, Expenses, Products) */
+html.compact-mode div[class*="grid"][class*="p-4"] {
+  padding-top: 0.45rem !important;
+  padding-bottom: 0.45rem !important;
+}
+
+html.compact-mode div[class*="p-3.5 sm:p-4"] {
+  padding-top: 0.45rem !important;
+  padding-bottom: 0.45rem !important;
+}
+
+html.compact-mode div[class*="items-center"] img.w-14.h-14,
+html.compact-mode div[class*="items-center"] div.w-14.h-14 {
+  width: 2.25rem !important;
+  height: 2.25rem !important;
+}
+
+html.compact-mode div[class*="items-center"] img.w-10.h-10,
+html.compact-mode div[class*="items-center"] div.w-10.h-10 {
+  width: 2rem !important;
+  height: 2rem !important;
+}
+
+/* ──────────────────────────────────────────────────────────
+   RTL & URDU / ARABIC MULTILINGUAL SUPPORT
+   ────────────────────────────────────────────────────────── */
+html[dir="rtl"] {
+  direction: rtl;
+  text-align: right;
+}
+
+html[dir="rtl"] aside {
+  border-right-width: 0px !important;
+  border-left-width: 1px !important;
+}
+
+html[lang="ur"] body,
+html[lang="ar"] body {
+  font-family: 'Segoe UI', Tahoma, Arial, system-ui, sans-serif;
+}
+
