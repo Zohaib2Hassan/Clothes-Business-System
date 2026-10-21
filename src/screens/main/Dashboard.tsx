@@ -6,7 +6,6 @@ import {
   ShoppingBag, 
   Coins, 
   Calendar, 
-  Clock, 
   ArrowUpRight, 
   Sparkles, 
   AlertTriangle, 
@@ -16,6 +15,8 @@ import {
   Shirt, 
   ChevronRight,
   TrendingDown,
+  Loader2,
+  RefreshCw,
   Layers
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
@@ -24,9 +25,8 @@ import { useNavigate, Link } from 'react-router-dom';
 import { Card, CardContent } from '../../components/ui/Card';
 import { authFetch } from '../../utils/api';
 import { Button } from '../../components/ui/Button';
-import { useLanguage } from '../../context/LanguageContext';
 import { useAuth } from '../../context/AuthContext';
-import { formatPKDate, formatPKTime, getPKCurrentDate } from '../../utils/date';
+import { formatPKDate, formatPKTime, PK_TIMEZONE } from '../../utils/date';
 import clsx from 'clsx';
 
 interface DashboardStats {
@@ -40,7 +40,7 @@ interface DashboardStats {
   totalProducts: number;
   lowStockCount: number;
   outOfStockCount: number;
-  predictedSales: number;
+  periodRevenue: number;
   chartData: Array<{ name: string; sales: number }>;
   lastSale?: {
     amount: number;
@@ -69,9 +69,10 @@ interface DashboardStats {
 export default function Dashboard() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { t } = useLanguage();
   const [period, setPeriod] = useState<7 | 15 | 30>(7);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [refreshKey, setRefreshKey] = useState(0);
 
   const [stats, setStats] = useState<DashboardStats>({
     todaySales: 0,
@@ -84,7 +85,7 @@ export default function Dashboard() {
     totalProducts: 0,
     lowStockCount: 0,
     outOfStockCount: 0,
-    predictedSales: 0,
+    periodRevenue: 0,
     chartData: [
       { name: 'Mon', sales: 0 },
       { name: 'Tue', sales: 0 },
@@ -99,25 +100,29 @@ export default function Dashboard() {
   });
 
   useEffect(() => {
+    const controller = new AbortController();
     const fetchStats = async () => {
       try {
         setLoading(true);
-        const response = await authFetch(`/api/dashboard/stats?period=${period}`);
-        if (response.ok) {
-          const data = await response.json();
-          setStats(data);
-        }
+        setError('');
+        const response = await authFetch(`/api/dashboard/stats?period=${period}`, { signal: controller.signal });
+        if (!response.ok) throw new Error('Could not load your dashboard. Please try again.');
+        const data = await response.json();
+        if (!controller.signal.aborted) setStats(data);
       } catch (error) {
-        console.error('Failed to fetch dashboard stats', error);
+        if (!controller.signal.aborted) {
+          setError(error instanceof Error ? error.message : 'Could not load your dashboard. Please try again.');
+        }
       } finally {
-        setLoading(false);
+        if (!controller.signal.aborted) setLoading(false);
       }
     };
     fetchStats();
-  }, [period]);
+    return () => controller.abort();
+  }, [period, refreshKey]);
 
   const getGreeting = () => {
-    const hour = new Date().getHours();
+    const hour = Number(new Intl.DateTimeFormat('en-GB', { timeZone: PK_TIMEZONE, hour: '2-digit', hourCycle: 'h23' }).format(new Date()));
     if (hour < 12) return 'Good Morning';
     if (hour < 17) return 'Good Afternoon';
     return 'Good Evening';
@@ -128,6 +133,19 @@ export default function Dashboard() {
   const avgChartSales = stats.chartData.length
     ? Math.round(stats.chartData.reduce((sum, c) => sum + (c.sales || 0), 0) / stats.chartData.length)
     : 0;
+
+  if (loading) {
+    return <div role="status" className="flex min-h-64 items-center justify-center gap-3 text-gray-500"><Loader2 className="h-5 w-5 animate-spin" />Loading your dashboard...</div>;
+  }
+
+  if (error) {
+    return (
+      <div role="alert" className="rounded-2xl border border-red-200 bg-white p-6 space-y-4">
+        <p className="text-red-700">{error}</p>
+        <Button onClick={() => setRefreshKey((key) => key + 1)}><RefreshCw className="h-4 w-4 mr-2" />Try again</Button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 pb-8">
@@ -144,11 +162,11 @@ export default function Dashboard() {
             <div className="flex items-center gap-2 flex-wrap">
               <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-white/10 backdrop-blur-md border border-white/15 text-emerald-300">
                 <Store className="w-3.5 h-3.5 text-emerald-400" />
-                Threadly Boutique
+                Threadly
               </span>
               <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/20 border border-emerald-500/30 text-emerald-200">
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                Store Live & Open
+                Business Overview
               </span>
               <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-mono text-gray-300 bg-black/20">
                 <Calendar className="w-3 h-3 text-gray-400" />
@@ -157,7 +175,7 @@ export default function Dashboard() {
             </div>
 
             <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">
-              {getGreeting()}, <span className="text-emerald-400">{user?.name || 'Naveed'}</span> 👋
+              {getGreeting()}, <span className="text-emerald-400">{user?.name || 'there'}</span> 👋
             </h1>
             <p className="text-sm text-gray-300 max-w-xl">
               Track real-time garment sales, manage clothing inventory, and monitor boutique growth across Pakistan.
@@ -198,9 +216,9 @@ export default function Dashboard() {
                 Today's Sales
               </span>
               {stats.todaySales > 0 ? (
-                <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
-                  <TrendingUp className="w-3 h-3" />
-                  {stats.todayGrowth > 0 ? `+${stats.todayGrowth}%` : 'Active'}
+                <span className={clsx('inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-md border', stats.todayGrowth < 0 ? 'bg-red-50 text-red-700 border-red-200 dark:bg-red-950/60 dark:text-red-300 dark:border-red-800' : 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800')}>
+                  {stats.todayGrowth < 0 ? <TrendingDown className="w-3 h-3" /> : <TrendingUp className="w-3 h-3" />}
+                  {stats.todayGrowth > 0 ? '+' : ''}{stats.todayGrowth}%
                 </span>
               ) : (
                 <span className="text-[11px] font-semibold text-gray-400 dark:text-slate-500 bg-gray-100 dark:bg-slate-800 px-2 py-0.5 rounded-md">
@@ -253,7 +271,7 @@ export default function Dashboard() {
                 Total Revenue
               </span>
               <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-md bg-brand-50 text-brand-800 dark:bg-slate-800 dark:text-emerald-400 border border-brand-100 dark:border-slate-700">
-                {stats.totalSalesCount || 7} Orders
+                {stats.totalSalesCount} Orders
               </span>
             </div>
 
@@ -282,14 +300,14 @@ export default function Dashboard() {
                 <Package className="w-4 h-4 text-blue-600" />
                 Clothing Catalog
               </span>
-              {stats.lowStockCount > 0 ? (
+              {stats.lowStockCount > 0 || stats.outOfStockCount > 0 ? (
                 <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
                   <AlertTriangle className="w-3 h-3" />
-                  {stats.lowStockCount} Low Stock
+                  {stats.lowStockCount + stats.outOfStockCount} Stock Alerts
                 </span>
               ) : (
                 <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
-                  Healthy
+                  {stats.totalProducts > 0 ? 'Healthy' : 'No Products'}
                 </span>
               )}
             </div>
@@ -302,14 +320,14 @@ export default function Dashboard() {
           </div>
 
           <div className="pt-3 border-t border-gray-100 dark:border-slate-800 flex items-center justify-between text-xs text-gray-500 dark:text-slate-400">
-            <span>{stats.lowStockCount} low stock alerts</span>
+            <span>{stats.lowStockCount} low · {stats.outOfStockCount} out of stock</span>
             <Link to="/products" className="text-blue-600 dark:text-blue-400 font-semibold hover:underline flex items-center gap-0.5">
               Inventory <ChevronRight className="w-3 h-3" />
             </Link>
           </div>
         </div>
 
-        {/* CARD 4: AI PREDICTED SALES */}
+        {/* CARD 4: RECORDED REVENUE FOR THE SELECTED PERIOD */}
         <div className="bg-white dark:bg-slate-900 rounded-2xl border border-gray-200/90 dark:border-slate-800 p-5 shadow-xs hover:shadow-xl transition-all relative overflow-hidden flex flex-col justify-between group">
           <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-purple-500 to-pink-500" />
           
@@ -317,24 +335,24 @@ export default function Dashboard() {
             <div className="flex items-center justify-between mb-3">
               <span className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
                 <Sparkles className="w-4 h-4 text-purple-600" />
-                Predicted Sales
+                Period Revenue
               </span>
               <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-md bg-purple-50 text-purple-700 dark:bg-purple-950/60 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
-                AI Forecast
+                Recorded Sales
               </span>
             </div>
 
             <div className="mb-2">
               <h2 className="text-2xl sm:text-3xl font-extrabold text-gray-900 dark:text-white font-mono tracking-tight">
-                Rs. {stats.predictedSales.toLocaleString()}
+                Rs. {stats.periodRevenue.toLocaleString()}
               </h2>
             </div>
           </div>
 
           <div className="pt-3 border-t border-gray-100 dark:border-slate-800 flex items-center justify-between text-xs text-gray-500 dark:text-slate-400">
-            <span>Forecast for {period} days</span>
+            <span>Last {period} days · Pakistan time</span>
             <Link to="/predictions" className="text-purple-600 dark:text-purple-400 font-semibold hover:underline flex items-center gap-0.5">
-              Insights <ChevronRight className="w-3 h-3" />
+              Forecasts <ChevronRight className="w-3 h-3" />
             </Link>
           </div>
         </div>
@@ -380,6 +398,13 @@ export default function Dashboard() {
 
           <CardContent className="p-6">
             <div className="h-[280px] w-full">
+              {maxDaySale === 0 ? (
+                <div className="flex h-full flex-col items-center justify-center gap-3 text-center text-gray-500">
+                  <ShoppingBag className="h-9 w-9 text-gray-300" />
+                  <p className="text-sm font-semibold">No sales recorded in this period.</p>
+                  <Link to="/sales/add" className="text-sm font-semibold text-brand-800 hover:underline">Record a sale</Link>
+                </div>
+              ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={stats.chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                   <defs>
@@ -422,6 +447,7 @@ export default function Dashboard() {
                   />
                 </AreaChart>
               </ResponsiveContainer>
+              )}
             </div>
 
             {/* Quick Chart KPI Footer */}

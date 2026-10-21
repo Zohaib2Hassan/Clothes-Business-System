@@ -127,33 +127,31 @@ export const authUser = async (req, res) => {
 // @route   POST /api/auth/verify-2fa
 // @access  Public
 export const verify2FA = async (req, res) => {
-  const { email, code, tempToken } = req.body;
+  const { code, tempToken } = req.body;
 
   try {
     if (!code) {
       return res.status(400).json({ message: 'Please enter the 6-digit verification code' });
     }
 
-    let user;
-    if (tempToken) {
-      try {
-        const decoded = jwt.verify(tempToken, process.env.JWT_SECRET || 'secret');
-        user = await User.findById(decoded.id);
-      } catch {
-        return res.status(401).json({ message: '2FA session expired. Please log in again.' });
-      }
-    } else if (email) {
-      user = await User.findOne({ email: email.trim().toLowerCase() });
+    if (!tempToken) {
+      return res.status(401).json({ message: 'Please sign in with your email and password first.' });
     }
-
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
+    let user;
+    try {
+      const decoded = jwt.verify(tempToken, process.env.JWT_SECRET || 'secret');
+      if (decoded.purpose !== '2fa_login') throw new Error('Invalid login session');
+      user = await User.findById(decoded.id);
+    } catch {
+      return res.status(401).json({ message: '2FA session expired. Please log in again.' });
+    }
+    if (!user?.twoFactorEnabled) {
+      return res.status(401).json({ message: 'Please log in again.' });
     }
 
     const trimmedCode = code.toString().trim();
     const isCodeValid =
-      (user.twoFactorCode && user.twoFactorCode === trimmedCode && user.twoFactorCodeExpires > new Date()) ||
-      trimmedCode === '123456';
+      user.twoFactorCode && user.twoFactorCode === trimmedCode && user.twoFactorCodeExpires > new Date();
 
     if (!isCodeValid) {
       return res.status(400).json({ message: 'Invalid or expired 2FA code. Please try again.' });
@@ -186,23 +184,22 @@ export const verify2FA = async (req, res) => {
 // @route   POST /api/auth/resend-2fa
 // @access  Public
 export const resend2FACode = async (req, res) => {
-  const { email, tempToken } = req.body;
+  const { tempToken } = req.body;
 
   try {
-    let user;
-    if (tempToken) {
-      try {
-        const decoded = jwt.verify(tempToken, process.env.JWT_SECRET || 'secret');
-        user = await User.findById(decoded.id);
-      } catch {
-        return res.status(401).json({ message: 'Session expired. Please log in again.' });
-      }
-    } else if (email) {
-      user = await User.findOne({ email: email.trim().toLowerCase() });
+    if (!tempToken) {
+      return res.status(401).json({ message: 'Please sign in with your email and password first.' });
     }
-
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
+    let user;
+    try {
+      const decoded = jwt.verify(tempToken, process.env.JWT_SECRET || 'secret');
+      if (decoded.purpose !== '2fa_login') throw new Error('Invalid login session');
+      user = await User.findById(decoded.id);
+    } catch {
+      return res.status(401).json({ message: 'Session expired. Please log in again.' });
+    }
+    if (!user?.twoFactorEnabled) {
+      return res.status(401).json({ message: 'Please log in again.' });
     }
 
     const code = Math.floor(100000 + Math.random() * 900000).toString();

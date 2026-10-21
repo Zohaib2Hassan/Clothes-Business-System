@@ -12,7 +12,9 @@
     "dev:client": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
+    "test": "node --test tests/*.test.mjs",
     "preview": "vite preview",
+    "share:server": "node scripts/shareServer.js",
     "server": "node server/server.js",
     "server:dev": "nodemon server/server.js"
   },

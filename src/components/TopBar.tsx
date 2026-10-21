@@ -44,26 +44,34 @@ export default function TopBar() {
   // Notification state
   const [showNotifications, setShowNotifications] = useState(false);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
-  const [unreadCount, setUnreadCount] = useState(0);
+  const unreadCount = notifications.filter((notification) => !notification.isRead).length;
+  const [notifError, setNotifError] = useState('');
+  const [isUpdatingNotifs, setIsUpdatingNotifs] = useState(false);
+  const mutationInFlight = useRef(false);
+  const requestVersion = useRef(0);
   const [isLoadingNotifs, setIsLoadingNotifs] = useState(false);
   const [notifFilter, setNotifFilter] = useState<'all' | 'unread'>('all');
   const notifRef = useRef<HTMLDivElement>(null);
 
   // Fetch notifications
   const fetchNotifications = useCallback(async () => {
-    if (!user) return;
+    if (!user || mutationInFlight.current) return;
+    const version = ++requestVersion.current;
     setIsLoadingNotifs(true);
     try {
       const res = await authFetch('/api/notifications');
-      if (res.ok) {
-        const data = await res.json();
+      if (!res.ok) throw new Error('Could not load notifications. Please try again.');
+      const data = await res.json();
+      if (version === requestVersion.current) {
         setNotifications(data.notifications || []);
-        setUnreadCount(data.unreadCount || 0);
+        setNotifError('');
       }
     } catch (err) {
-      console.error('Failed to fetch notifications', err);
+      if (version === requestVersion.current) {
+        setNotifError(err instanceof Error ? err.message : 'Could not load notifications. Please try again.');
+      }
     } finally {
-      setIsLoadingNotifs(false);
+      if (version === requestVersion.current) setIsLoadingNotifs(false);
     }
   }, [user]);
 
@@ -104,61 +112,58 @@ export default function TopBar() {
     navigate('/login');
   };
 
+  const updateNotifications = async (
+    url: string,
+    method: 'PUT' | 'DELETE',
+    update: (items: NotificationItem[]) => NotificationItem[],
+  ) => {
+    if (mutationInFlight.current) return false;
+    mutationInFlight.current = true;
+    ++requestVersion.current; // Ignore reads that started before this action.
+    setIsLoadingNotifs(false);
+    setIsUpdatingNotifs(true);
+    setNotifError('');
+    try {
+      const response = await authFetch(url, { method });
+      if (!response.ok) throw new Error('Could not update notifications. Please try again.');
+      setNotifications(update);
+      return true;
+    } catch (error) {
+      setNotifError(error instanceof Error ? error.message : 'Could not update notifications. Please try again.');
+      return false;
+    } finally {
+      mutationInFlight.current = false;
+      setIsUpdatingNotifs(false);
+    }
+  };
+
   // Mark single as read
   const handleMarkAsRead = async (id: string) => {
-    try {
-      await authFetch(`/api/notifications/${id}/read`, { method: 'PUT' });
-      setNotifications((prev) =>
+    return updateNotifications(`/api/notifications/${id}/read`, 'PUT', (prev) =>
         prev.map((n) => (n._id === id ? { ...n, isRead: true } : n))
-      );
-      setUnreadCount((prev) => Math.max(0, prev - 1));
-    } catch (e) {
-      console.error('Error marking as read', e);
-    }
+    );
   };
 
   // Mark all as read
   const handleMarkAllAsRead = async () => {
-    try {
-      await authFetch('/api/notifications/read-all', { method: 'PUT' });
-      setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
-      setUnreadCount(0);
-    } catch (e) {
-      console.error('Error marking all as read', e);
-    }
+    await updateNotifications('/api/notifications/read-all', 'PUT', (prev) => prev.map((n) => ({ ...n, isRead: true })));
   };
 
   // Delete notification
   const handleDeleteNotification = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
-    try {
-      await authFetch(`/api/notifications/${id}`, { method: 'DELETE' });
-      const target = notifications.find((n) => n._id === id);
-      if (target && !target.isRead) {
-        setUnreadCount((prev) => Math.max(0, prev - 1));
-      }
-      setNotifications((prev) => prev.filter((n) => n._id !== id));
-    } catch (e) {
-      console.error('Error deleting notification', e);
-    }
+    await updateNotifications(`/api/notifications/${id}`, 'DELETE', (prev) => prev.filter((n) => n._id !== id));
   };
 
   // Clear all notifications
   const handleClearAll = async () => {
-    try {
-      await authFetch('/api/notifications', { method: 'DELETE' });
-      setNotifications([]);
-      setUnreadCount(0);
-    } catch (e) {
-      console.error('Error clearing notifications', e);
-    }
+    await updateNotifications('/api/notifications', 'DELETE', () => []);
   };
 
   // Handle clicking notification item
-  const handleNotificationClick = (item: NotificationItem) => {
-    if (!item.isRead) {
-      handleMarkAsRead(item._id);
-    }
+  const handleNotificationClick = async (item: NotificationItem) => {
+    if (mutationInFlight.current) return;
+    if (!item.isRead && !await handleMarkAsRead(item._id)) return;
     if (item.link) {
       setShowNotifications(false);
       navigate(item.link);
@@ -170,7 +175,8 @@ export default function TopBar() {
     try {
       const now = new Date();
       const past = new Date(dateStr);
-      const diffMs = now.getTime() - past.getTime();
+      if (Number.isNaN(past.getTime())) return '';
+      const diffMs = Math.max(0, now.getTime() - past.getTime());
       const diffMins = Math.floor(diffMs / 60000);
       const diffHours = Math.floor(diffMins / 60);
       const diffDays = Math.floor(diffHours / 24);
@@ -288,6 +294,7 @@ export default function TopBar() {
                 {unreadCount > 0 && (
                   <button
                     onClick={handleMarkAllAsRead}
+                    disabled={isUpdatingNotifs}
                     className="text-xs font-semibold text-brand-800 hover:text-brand-900 flex items-center gap-1 transition-colors hover:underline"
                   >
                     <CheckCheck className="w-3.5 h-3.5" />
@@ -295,6 +302,13 @@ export default function TopBar() {
                   </button>
                 )}
               </div>
+
+              {notifError && (
+                <div role="alert" className="px-4 py-3 text-xs text-red-700 bg-red-50 flex items-center justify-between gap-2">
+                  <span>{notifError}</span>
+                  <button type="button" onClick={fetchNotifications} disabled={isLoadingNotifs || isUpdatingNotifs} className="font-semibold underline shrink-0">Refresh</button>
+                </div>
+              )}
 
               {/* Tabs: All / Unread */}
               <div className="flex border-b border-gray-100 px-4 pt-1 bg-gray-50/50">
@@ -334,9 +348,9 @@ export default function TopBar() {
                     <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3 text-gray-400">
                       <CheckCircle2 className="w-6 h-6 text-brand-800" />
                     </div>
-                    <p className="text-sm font-semibold text-gray-900">All caught up!</p>
+                    <p className="text-sm font-semibold text-gray-900">{notifError ? 'Notifications unavailable' : 'All caught up!'}</p>
                     <p className="text-xs text-gray-500 mt-1">
-                      {notifFilter === 'unread' ? 'No unread notifications' : 'No notifications yet'}
+                      {notifError ? 'Refresh to try loading your notifications again.' : notifFilter === 'unread' ? 'No unread notifications' : 'No notifications yet'}
                     </p>
                   </div>
                 ) : (
@@ -375,7 +389,8 @@ export default function TopBar() {
                       {/* Delete notification button */}
                       <button
                         onClick={(e) => handleDeleteNotification(e, item._id)}
-                        className="absolute right-2 top-2 p-1 text-gray-400 hover:text-red-500 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                        disabled={isUpdatingNotifs}
+                        className="absolute right-2 top-2 p-1 text-gray-400 hover:text-red-500 rounded opacity-100 sm:opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
                         title="Dismiss"
                       >
                         <X className="w-3.5 h-3.5" />
@@ -390,6 +405,7 @@ export default function TopBar() {
                 <div className="p-3 bg-gray-50 border-t border-gray-100 flex items-center justify-between text-xs">
                   <button
                     onClick={handleClearAll}
+                    disabled={isUpdatingNotifs}
                     className="text-gray-500 hover:text-red-600 transition-colors flex items-center gap-1 font-medium"
                   >
                     <Trash2 className="w-3.5 h-3.5" />

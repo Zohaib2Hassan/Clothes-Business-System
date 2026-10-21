@@ -1,5 +1,6 @@
 import Sale from '../models/Sale.js';
 import Product from '../models/Product.js';
+import { getSalesChart } from '../utils/dashboard.js';
 
 // @desc    Get dashboard stats
 // @route   GET /api/dashboard/stats
@@ -83,39 +84,7 @@ export const getDashboardStats = async (req, res) => {
       }
     });
 
-    // 3. Generate dynamic day-by-day chart data based on periodDays (7, 15, or 30)
-    const chartData = [];
-    const daysToShow = [7, 15, 30].includes(periodDays) ? periodDays : 7;
-    const stepSize = daysToShow === 30 ? 3 : daysToShow === 15 ? 2 : 1;
-
-    for (let i = daysToShow - 1; i >= 0; i -= stepSize) {
-      const d = new Date(now);
-      d.setDate(d.getDate() - i);
-      const dStart = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-      const dEnd = new Date(d.getFullYear(), d.getMonth(), d.getDate() + (stepSize - 1), 23, 59, 59, 999);
-
-      const dayLabel =
-        daysToShow === 7
-          ? d.toLocaleDateString('en-US', { weekday: 'short' })
-          : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-
-      const daySales = sales
-        .filter((s) => {
-          const sDate = new Date(s.date || s.createdAt);
-          return sDate >= dStart && sDate <= dEnd;
-        })
-        .reduce((sum, s) => sum + (s.totalAmount || 0), 0);
-
-      // If user has no sales in period, provide realistic demo baseline
-      const baselineSales = totalRevenue > 0
-        ? daySales
-        : Math.round(2500 + Math.sin(i * 0.8) * 1200 + (daysToShow - i) * 150);
-
-      chartData.push({
-        name: dayLabel,
-        sales: baselineSales,
-      });
-    }
+    const { chartData, periodRevenue, periodDays: daysToShow } = getSalesChart(sales, periodDays, now);
 
     // 4. Top selling products
     const itemMap = {};
@@ -152,11 +121,6 @@ export const getDashboardStats = async (req, res) => {
           .join(', ') || 'Clothing item',
     }));
 
-    // AI predicted sales
-    const predictedSales = Math.round(
-      totalRevenue > 0 ? (totalRevenue / Math.max(1, sales.length)) * periodDays * 1.15 : 45000
-    );
-
     res.json({
       todaySales,
       todayOrdersCount,
@@ -168,7 +132,7 @@ export const getDashboardStats = async (req, res) => {
       totalProducts,
       lowStockCount,
       outOfStockCount,
-      predictedSales,
+      periodRevenue,
       periodDays: daysToShow,
       chartData,
       lastSale,

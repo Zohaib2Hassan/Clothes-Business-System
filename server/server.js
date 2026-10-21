@@ -3,6 +3,8 @@ import dotenv from 'dotenv';
 import cors from 'cors';
 import connectDB from './config/db.js';
 import { errorHandler } from './middleware/errorMiddleware.js';
+import { websiteRouter } from './middleware/website.js';
+import { fileURLToPath } from 'node:url';
 
 import authRoutes from './routes/authRoutes.js';
 import productRoutes from './routes/productRoutes.js';
@@ -100,6 +102,10 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/subscription', subscriptionRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/pos', posRoutes);
+
+if (process.env.SERVE_WEB === 'true') {
+  app.use(websiteRouter(fileURLToPath(new URL('../dist/', import.meta.url))));
+}
 
 app.use(errorHandler);
 

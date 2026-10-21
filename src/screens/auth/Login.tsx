@@ -19,7 +19,6 @@ export default function Login() {
   const [tempToken, setTempToken] = useState('');
   const [devCode, setDevCode] = useState('');
   const [emailSent, setEmailSent] = useState(false);
-  const [isEmailConfigured, setIsEmailConfigured] = useState(false);
   const [isResending, setIsResending] = useState(false);
   const [resendMessage, setResendMessage] = useState('');
 
@@ -47,7 +46,6 @@ export default function Login() {
       setTempToken(result.tempToken || '');
       setDevCode(result.devCode || '');
       setEmailSent(Boolean(result.emailSent));
-      setIsEmailConfigured(Boolean(result.isEmailConfigured));
       setError('');
     } else {
       setError(result.message || 'Login failed');
@@ -86,7 +84,6 @@ export default function Login() {
     if (res.success) {
       if (res.devCode) setDevCode(res.devCode);
       setEmailSent(Boolean(res.emailSent));
-      setIsEmailConfigured(Boolean(res.isEmailConfigured));
       setResendMessage(res.message || 'Verification code resent successfully.');
     } else {
       setError(res.message || 'Failed to resend code');
@@ -260,16 +257,7 @@ export default function Login() {
                     placeholder="123456"
                     className="block w-full py-3 px-4 bg-gray-50 border border-gray-200 rounded-xl text-center font-mono text-2xl tracking-[0.5em] text-gray-900 placeholder-gray-300 focus:bg-white focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 transition-all font-bold"
                   />
-                  <div className="flex items-center justify-between mt-1.5 text-[11px] text-gray-500">
-                    <span>Session code or fallback:</span>
-                    <button
-                      type="button"
-                      onClick={() => setTwoFactorCode('123456')}
-                      className="font-mono font-medium text-brand-800 hover:underline"
-                    >
-                      Use 123456
-                    </button>
-                  </div>
+                  <p className="mt-1.5 text-[11px] text-gray-500">Enter the current code for this sign-in session.</p>
                 </div>
 
                 <Button type="submit" variant="primary" className="w-full py-3.5 text-base mt-2" disabled={isLoading}>

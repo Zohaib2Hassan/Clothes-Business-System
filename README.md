@@ -87,6 +87,8 @@ This single command runs:
 - **ML Service**: Python FastAPI on `http://127.0.0.1:8000`
 - **Frontend**: Vite Dev Server on `http://localhost:5173`
 
+The frontend opens `http://localhost:5173/` automatically. Port 5173 is fixed: if another process is using it, Vite reports an error instead of moving the website to a different address. Keep the terminal running while using the app.
+
 ---
 
 ## Available Scripts
@@ -97,3 +99,32 @@ This single command runs:
 - `npm run dev:ml`: Starts the Python FastAPI ML microservice with uvicorn.
 - `npm run build`: Compiles TypeScript and builds the frontend production bundle.
 - `npm run lint`: Runs Oxlint code linter.
+- `npm test`: Runs regression tests for Pakistan date boundaries, empty dashboards, notification clearing, and session handling. Use Node.js 24 or newer for these tests.
+
+Dashboard charts show recorded sales for every day in the selected Pakistan date range. The period revenue card is the sum of those sales; forecasts remain available on the Predictions screen. An empty notification inbox stays empty until a new business event creates a notification.
+
+## Temporary public sharing
+
+Keep the backend and ML service running. Build the website with `npm.cmd run build`, then run `npm.cmd run share:server` in another terminal. The share server uses `http://127.0.0.1:4173`, serves the compiled website, and forwards `/api` requests to the backend on port 5000. It does not serve the source directory or `.env` files.
+
+With Cloudflare's `cloudflared` installed, run `cloudflared tunnel --url http://127.0.0.1:4173`. Share the HTTPS URL printed by that command. Visitors sign in or create their own account. The link is temporary and requires this computer, the app services, and the tunnel to stay running and online. Restarting a Quick Tunnel generates a new URL.
+
+## Docker Desktop and Docker Hub
+
+Open Docker Desktop with Linux containers enabled. Keep a local `.env` with `JWT_SECRET` set; Gemini, payment, and email settings are optional runtime configuration. These files, local database records, and saved models are excluded from the image build.
+
+```powershell
+docker compose up -d --build --wait
+```
+
+Open **http://localhost:8080**. Docker Desktop lists the three containers under **clothes-business-system**: the website/API, Python forecasting service, and MongoDB. MongoDB records and trained models are stored in named Docker volumes. `docker compose stop` stops the application; `docker compose start` starts it again. `docker compose down` removes the containers while retaining their volumes. Avoid adding `-v` unless you intend to delete the Docker data.
+
+To copy the original local database into an empty Docker database, keep the original backend running and run `node scripts/copyLocalDataToDocker.js` once. It preserves record IDs and indexes, refuses to overwrite existing Docker records, and leaves the original database unchanged. After copying, the original app and Docker app have separate databases; subsequent changes do not synchronize automatically.
+
+The default Docker Hub repository is `zohaibhassan1368/clothes-business-system`. Set `DOCKERHUB_USERNAME` in `.env` to use another namespace. The `latest` tag contains the website/API; the `ml` tag contains the forecasting service. After signing in with `docker login`, publish only the application images:
+
+```powershell
+docker compose push web ml
+```
+
+On another computer, download them with `docker compose pull`, then start them with `docker compose up -d --no-build --wait`. Provide your own local `.env`; uploaded images do not contain API keys, account records, or database volumes. Docker Hub stores the images and does not host a publicly accessible running website.

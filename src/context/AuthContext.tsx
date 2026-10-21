@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
+import { authFetch } from '../utils/api';
 
 export interface User {
   _id: string;
@@ -186,17 +187,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const token = user?.token;
       if (!token) return;
 
-      const res = await fetch('/api/auth/profile', {
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const res = await authFetch('/api/auth/profile');
 
       if (res.ok) {
         const data = await res.json();
         setUser((prev) => {
-          if (!prev) return null;
+          if (!prev || prev.token !== token) return prev;
           const merged = { ...prev, ...data, token: prev.token };
           localStorage.setItem('threadly_user', JSON.stringify(merged));
           return merged;
