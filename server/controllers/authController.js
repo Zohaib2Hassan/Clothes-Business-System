@@ -4,6 +4,9 @@ import Product from '../models/Product.js';
 import Sale from '../models/Sale.js';
 import Customer from '../models/Customer.js';
 import Expense from '../models/Expense.js';
+import HeldSale from '../models/HeldSale.js';
+import Return from '../models/Return.js';
+import Notification from '../models/Notification.js';
 import jwt from 'jsonwebtoken';
 import { send2FACode, isEmailConfigured } from '../services/emailService.js';
 
@@ -78,11 +81,12 @@ export const authUser = async (req, res) => {
         user.twoFactorCodeExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
         await user.save();
 
-        console.log(`[2FA Security] Login verification code for ${user.email}: ${code}`);
-
         // Dispatch real email if SMTP is configured in .env
         const emailResult = await send2FACode(user.email, code, user.name);
 
+        if (!emailResult.sent && process.env.NODE_ENV === 'production') {
+          return res.status(503).json({ message: 'Verification email could not be delivered. Configure the website email service, then sign in again.' });
+        }
         const tempToken = jwt.sign(
           { id: user._id, purpose: '2fa_login' },
           process.env.JWT_SECRET || 'secret',
@@ -93,7 +97,7 @@ export const authUser = async (req, res) => {
           requires2FA: true,
           email: user.email,
           tempToken,
-          devCode: code,
+          ...(process.env.NODE_ENV !== 'production' ? { devCode: code } : {}),
           emailSent: emailResult.sent,
           isEmailConfigured: isEmailConfigured(),
           message: emailResult.sent
@@ -207,13 +211,14 @@ export const resend2FACode = async (req, res) => {
     user.twoFactorCodeExpires = new Date(Date.now() + 10 * 60 * 1000);
     await user.save();
 
-    console.log(`[2FA Resent] Code for ${user.email}: ${code}`);
-
     const emailResult = await send2FACode(user.email, code, user.name);
 
+    if (!emailResult.sent && process.env.NODE_ENV === 'production') {
+      return res.status(503).json({ message: 'Verification email could not be delivered. Configure the website email service, then sign in again.' });
+    }
     res.json({
       success: true,
-      devCode: code,
+      ...(process.env.NODE_ENV !== 'production' ? { devCode: code } : {}),
       emailSent: emailResult.sent,
       isEmailConfigured: isEmailConfigured(),
       message: emailResult.sent
@@ -263,6 +268,9 @@ export const updateUserProfile = async (req, res) => {
     }
     if (req.body.phone !== undefined) user.phone = req.body.phone;
     if (req.body.avatar !== undefined) user.avatar = req.body.avatar;
+    if (req.body.twoFactorEnabled === true && process.env.NODE_ENV === 'production' && !isEmailConfigured()) {
+      return res.status(400).json({ message: 'Configure the website email service before enabling two-factor sign-in.' });
+    }
     if (req.body.twoFactorEnabled !== undefined) {
       user.twoFactorEnabled = req.body.twoFactorEnabled;
       if (!req.body.twoFactorEnabled) {
@@ -337,6 +345,9 @@ export const deleteUserProfile = async (req, res) => {
       Sale.deleteMany({ user: req.user._id }),
       Customer.deleteMany({ user: req.user._id }),
       Expense.deleteMany({ user: req.user._id }),
+      HeldSale.deleteMany({ user: req.user._id }),
+      Return.deleteMany({ user: req.user._id }),
+      Notification.deleteMany({ user: req.user._id }),
     ]);
 
     res.json({ message: 'Account and all data successfully deleted' });

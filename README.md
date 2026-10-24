@@ -128,3 +128,16 @@ docker compose push web ml
 ```
 
 On another computer, download them with `docker compose pull`, then start them with `docker compose up -d --no-build --wait`. Provide your own local `.env`; uploaded images do not contain API keys, account records, or database volumes. Docker Hub stores the images and does not host a publicly accessible running website.
+
+
+## Android and iPhone companion app
+
+[Threadly Pocket source and setup](mobile/README.md) is included under `mobile/`. It uses the website account and database for shared products, stock, customers, sales, expenses, reports and business settings. The earlier on-device mode remains separate.
+
+```powershell
+cd mobile
+npm.cmd ci
+npm.cmd start
+```
+
+[Download the signed Android 1.1.0 testing APK](https://expo.dev/artifacts/eas/BW5D4qsLJHqI2f7jG5KK4D0TrqynP0r8iyjVk04YQwg.apk). Enter the current public HTTPS website address in the app; temporary testing links can expire or change. See [store/build instructions](mobile/STORE_RELEASE.md) and [validation details](mobile/VALIDATION.md). Store publication and full physical-device QA remain pending. Mobile code is excluded from the website Docker image build context.

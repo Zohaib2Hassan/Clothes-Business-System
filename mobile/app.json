@@ -1,0 +1,51 @@
+{
+  "expo": {
+    "name": "Threadly Pocket",
+    "slug": "threadly-pocket",
+    "scheme": "threadlypocket",
+    "version": "1.1.0",
+    "orientation": "default",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.zohaibhassan.threadlypocket",
+      "buildNumber": "1",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "package": "com.zohaibhassan.threadlypocket",
+      "adaptiveIcon": {
+        "backgroundColor": "#214F40",
+        "foregroundImage": "./assets/adaptive-icon.png"
+      },
+      "blockedPermissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "output": "single"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-sharing",
+      "expo-secure-store"
+    ],
+    "extra": {
+      "router": {
+        "asyncRoutes": {
+          "web": true
+        }
+      },
+      "eas": {
+        "projectId": "bad06cb7-7a71-437b-beb4-1a7e97329675"
+      }
+    },
+    "owner": "zohaib2hassan"
+  }
+}

@@ -1,3 +1,4 @@
+import { planReturn } from '../utils/returnPlan.js';
 import mongoose from 'mongoose';
 import Product from '../models/Product.js';
 import Sale from '../models/Sale.js';
@@ -670,7 +671,7 @@ export const getPOSReceipt = async (req, res) => {
 };
 
 // =========================================================================
-// 6. RETURNS & REFUNDS (With Atomic Inventory Restock & Audit Trail)
+// 6. RETURNS & REFUNDS (Validated Quantities, Prorated Refunds & Audit Trail)
 // =========================================================================
 export const processPOSReturn = async (req, res) => {
   try {
@@ -686,73 +687,39 @@ export const processPOSReturn = async (req, res) => {
       return res.status(404).json({ message: 'Original sale transaction not found.' });
     }
 
-    const returnItemsRecord = [];
-    let totalRefundAmount = 0;
-
-    for (const ret of itemsToReturn) {
-      const returnQty = Math.max(1, Number(ret.qty) || 1);
-
-      // Find matching item in the original sale
-      const originalItem = sale.items.find(
-        (it) =>
-          (it._id && it._id.toString() === ret.itemId) ||
-          (it.productId && it.productId === ret.productId) ||
-          (it.product && it.product.toString() === ret.productId)
-      );
-
-      if (!originalItem) {
-        return res.status(400).json({ message: `Item "${ret.productName || ret.productId}" not found in original sale.` });
-      }
-
-      const previouslyReturned = originalItem.returnedQty || 0;
-      const returnableUnits = originalItem.qty - previouslyReturned;
-
-      if (returnQty > returnableUnits) {
-        return res.status(400).json({
-          message: `Cannot return ${returnQty} units for "${originalItem.productName}". Only ${returnableUnits} units are eligible.`,
-        });
-      }
-
-      // Restock inventory in MongoDB if linked to a catalog product
-      if (originalItem.product) {
-        await Product.findByIdAndUpdate(originalItem.product, {
-          $inc: { stock: returnQty },
-        });
-      }
-
-      // Update returned count on original sale item
-      originalItem.returnedQty = previouslyReturned + returnQty;
-
-      // Calculate line refund amount (pro-rated if sale had overall discount)
-      const unitRefundPrice = originalItem.price;
-      const lineRefund = unitRefundPrice * returnQty;
-      totalRefundAmount += lineRefund;
-
-      returnItemsRecord.push({
-        product: originalItem.product,
-        productId: originalItem.productId,
-        productName: originalItem.productName,
-        size: originalItem.size,
-        color: originalItem.color,
-        qty: returnQty,
-        unitPrice: unitRefundPrice,
-        refundSubtotal: lineRefund,
-      });
-    }
+    let plan;
+    try { plan = planReturn(sale, itemsToReturn); }
+    catch (error) { return res.status(400).json({ message: error.message }); }
+    const totalRefundAmount = plan.refund;
+    const returnItemsRecord = plan.lines.map(({ item, qty, refund }) => ({
+      product: item.product, productId: item.productId, productName: item.productName,
+      size: item.size, color: item.color, qty, unitPrice: refund / qty, refundSubtotal: refund,
+    }));
+    for (const { item, qty } of plan.lines) item.returnedQty = (item.returnedQty || 0) + qty;
 
     // Determine return status on sale
     const allItemsFullyReturned = sale.items.every(
       (it) => (it.returnedQty || 0) >= it.qty
     );
     sale.returnStatus = allItemsFullyReturned ? 'Full' : 'Partial';
-    sale.refundAmount = (sale.refundAmount || 0) + totalRefundAmount;
+    sale.refundAmount = Math.round(((sale.refundAmount || 0) + totalRefundAmount) * 100) / 100;
     if (sale.refundAmount >= sale.totalAmount) {
       sale.paymentStatus = 'Refunded';
     } else {
       sale.paymentStatus = 'Partially Refunded';
     }
 
-    await sale.save();
+    // Compare the prior version before committing any inventory restoration.
+    const committed = await Sale.findOneAndUpdate(
+      { _id: sale._id, user: userId, __v: sale.__v },
+      { $set: { items: sale.items, returnStatus: sale.returnStatus, refundAmount: sale.refundAmount, paymentStatus: sale.paymentStatus }, $inc: { __v: 1 } },
+      { returnDocument: 'after', runValidators: true },
+    );
+    if (!committed) return res.status(409).json({ message: 'This receipt changed. Refresh it before returning items.' });
+    for (const { item, qty } of plan.lines) {
+      if (item.product) await Product.findOneAndUpdate({ _id: item.product, user: userId }, { $inc: { stock: qty } });
+    }
+
 
     // Adjust customer totalSpent if linked
     if (sale.customer) {

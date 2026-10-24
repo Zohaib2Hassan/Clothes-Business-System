@@ -12,6 +12,7 @@ export const protect = async (req, res, next) => {
       token = req.headers.authorization.split(' ')[1];
 
       const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret');
+      if (decoded.purpose) return res.status(401).json({ message: 'Complete sign-in verification before using your account.' });
 
       req.user = await User.findById(decoded.id).select('-password');
 

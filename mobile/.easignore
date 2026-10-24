@@ -1,0 +1,13 @@
+# Build only the mobile application; no local records, docs or credentials.
+**
+!package.json
+!package-lock.json
+!app.json
+!eas.json
+!tsconfig.json
+!src
+!src/**
+!assets
+!assets/icon.png
+!assets/adaptive-icon.png
+!assets/favicon.png

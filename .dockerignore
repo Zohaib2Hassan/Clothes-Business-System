@@ -20,3 +20,6 @@ ml/models/saved
 .vscode
 .idea
 
+
+# Mobile source is published here but is not part of the website image.
+mobile/

@@ -1,0 +1,30 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { emptyShop, saveProduct, checkout, voidSale, saveExpense, summary, validateBackup, sampleShop, parseMoney, dayKey, weeklySales } from '../src/domain/shop.ts';
+
+const product = (overrides = {}) => ({ id:'p1', name:'Linen kurta', category:'Kurtas', size:'M', color:'Sage', sku:'K-1', price:325000, cost:190000, stock:4, lowAt:2, archived:false, ...overrides });
+const stocked = () => saveProduct(emptyShop(), product());
+const sell = (shop = stocked(), quantity = 1, options = {}) => checkout(shop, [{productId:'p1',quantity}], {id:'sale1', customer:'Zohaib', method:'Cash', discount:0, date:'2026-10-23T07:00:00.000Z', ...options});
+
+test('new shops have no synthetic records', () => { const s=emptyShop(); assert.equal(s.mode,'live'); assert.deepEqual([s.products.length,s.sales.length,s.expenses.length],[0,0,0]); });
+test('money parsing uses exact paisa and rejects malformed amounts', () => { assert.equal(parseMoney('10.01'),1001); assert.equal(parseMoney('0.1'),10); for(const v of ['-1','1.001','1,000','1e3','NaN','','10000001']) assert.throws(()=>parseMoney(v)); });
+test('product validation rejects fractions, negative stock and free prices', () => { for(const p of [{stock:-1},{stock:1.2},{price:0},{cost:-100}]) assert.throws(()=>saveProduct(emptyShop(),product(p))); });
+test('duplicate SKUs are case insensitive; editing own SKU is allowed', () => { const s=stocked(); assert.throws(()=>saveProduct(s,product({id:'p2',sku:'k-1'}))); assert.equal(saveProduct(s,product({name:'Updated'})).products.length,1); });
+test('sale updates stock and snapshots cost without mutating source', () => { const s=stocked(); const r=sell(s,2); assert.equal(s.products[0].stock,4); assert.equal(r.shop.products[0].stock,2); assert.equal(r.sale.cost,380000); assert.equal(r.sale.total,650000); const changed=saveProduct(r.shop,product({cost:1})); assert.equal(changed.sales[0].cost,380000); });
+test('duplicate cart rows combine before stock validation', () => { assert.throws(()=>checkout(stocked(),[{productId:'p1',quantity:3},{productId:'p1',quantity:2}],{id:'s',customer:'',method:'Cash',discount:0}),/Only 4/); });
+test('rejects overselling, missing and archived items', () => { assert.throws(()=>sell(stocked(),5)); assert.throws(()=>sell(emptyShop())); assert.throws(()=>sell(saveProduct(emptyShop(),product({archived:true})))); });
+test('rejects zero, fractional and negative sale quantities', () => { for(const n of [0,-1,1.5]) assert.throws(()=>sell(stocked(),n)); });
+test('discount must not exceed subtotal and reduces earnings', () => { assert.throws(()=>sell(stocked(),1,{discount:325001})); const r=sell(stocked(),1,{discount:10000}); assert.equal(r.sale.total,315000); assert.equal(summary(r.shop).earnings,125000); });
+test('duplicate sale ID cannot deduct stock twice', () => { const s=sell().shop; assert.throws(()=>sell(s),/already been saved/); assert.equal(s.products[0].stock,3); });
+test('void restores inventory once, keeps audit record and removes revenue', () => { const r=sell(stocked(),2); const s=voidSale(r.shop,'sale1'); assert.equal(s.products[0].stock,4); assert.equal(s.sales[0].voided,true); assert.equal(summary(s).revenue,0); assert.throws(()=>voidSale(s,'sale1')); });
+test('void restores archived product stock too', () => { const r=sell(); const s=saveProduct(r.shop,{...r.shop.products[0],archived:true}); assert.equal(voidSale(s,'sale1').products[0].stock,4); });
+test('expenses reduce earnings without reducing sales', () => { const s=saveExpense(sell().shop,{id:'e',title:'Packaging',category:'Supplies',amount:5000,date:'2026-10-23T08:00:00Z'}); const a=summary(s); assert.equal(a.revenue,325000); assert.equal(a.earnings,130000); assert.throws(()=>saveExpense(s,s.expenses[0])); });
+test('Karachi day rolls over at 19:00 UTC', () => { assert.equal(dayKey('2026-10-22T18:59:59Z'),'2026-10-22'); assert.equal(dayKey('2026-10-22T19:00:00Z'),'2026-10-23'); const s=sell(stocked(),1,{date:'2026-10-22T19:01:00Z'}).shop; assert.equal(summary(s,'2026-10-23').orders,1); assert.equal(summary(s,'2026-10-22').orders,0); });
+test('weekly chart includes seven chronological days and real zero values', () => { const w=weeklySales(emptyShop(),new Date('2026-10-23T12:00:00Z')); assert.equal(w.length,7); assert.equal(w.at(-1).day,'Fri'); assert.equal(w.reduce((s,d)=>s+d.revenue,0),0); });
+test('backup round trip preserves inventory and financial records', () => { const s=sell().shop; assert.deepEqual(validateBackup(JSON.parse(JSON.stringify(s))),s); });
+test('backup rejects tampered totals and missing products', () => { const s=sell().shop; const a=structuredClone(s); a.sales[0].total++; assert.throws(()=>validateBackup(a)); const b=structuredClone(s); b.products=[]; assert.throws(()=>validateBackup(b)); });
+test('backup rejects duplicate IDs, malformed records, and unsupported version', () => { const s=stocked(); for(const bad of [{...s,products:[...s.products,...s.products]},{...s,products:[null]},{...s,sales:[null]},{...s,expenses:[null]},{...s,version:2},null]) assert.throws(()=>validateBackup(bad)); });
+test('backup strips unsupported fields rather than persisting them', () => { const s=stocked(); s.password='not-kept'; s.products[0].secret='not-kept'; const clean=validateBackup(s); assert.equal('password' in clean,false); assert.equal('secret' in clean.products[0],false); });
+test('sample is explicitly labelled and independently validates', () => { const s=sampleShop(); assert.equal(s.mode,'sample'); assert.ok(s.sales.length); assert.deepEqual(validateBackup(JSON.parse(JSON.stringify(s))),s); assert.equal(emptyShop().sales.length,0); });
+test('backup rejects null dates and malformed sale items', () => { const s=sell().shop; for(const changes of [{date:null},{items:[null]},{date:''}]) { const copy=structuredClone(s); Object.assign(copy.sales[0],changes); assert.throws(()=>validateBackup(copy)); } });
+test('sale requires a stable nonempty identifier', () => { assert.throws(()=>sell(stocked(),1,{id:''})); });
